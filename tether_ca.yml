@@ -1,0 +1,107 @@
+# -----------------------------------------------------------------------------
+# This automates the install of a Cognos Analytics instance into a tethered
+# CloudPak for Data install.
+#
+# Requires:
+#  - CloudPak for Data Enterprise 4.6.4+ installed
+#  - cpd-cli installed and accessible where running the ansible
+#
+# Define the following required environment variables:
+#  CA_NAMESPACE : namespace where to install the CA instance
+#  CPD_NAMESPACE: namespace of the CPD control plane install
+#  OCP_TOKEN: OCP login token
+#  OCP_SERVER: OCP server url
+#  OLM_UTILS_TTY_OFF: mandatory this is set to true
+#
+
+- hosts: localhost
+  any_errors_fatal: true
+  collections:
+    - kubernetes.core
+
+# Set Defaults
+# -----------------------------------------------------------------------------
+
+  vars:
+    ca_namespace: "{{ lookup('env', 'CA_NAMESPACE') }}"
+    cpd_namespace: "{{ lookup('env', 'CPD_NAMESPACE') }}"
+    ocp_token: "{{ lookup('env', 'OCP_TOKEN') }}"
+    ocp_server: "{{ lookup('env', 'OCP_SERVER') }}"
+    olm_utils_tty_off: "{{ lookup('env', 'OLM_UTILS_TTY_OFF') }}"
+    cpd_release: "{{ lookup('env', 'CPD_RELEASE') | default('4.6.4', true) }}"
+    block_storage_class: "{{ lookup('env', 'BLOCK_STORAGE_CLASS') | default('ocs-storagecluster-ceph-rbd', true) }}"
+    file_storage_class: "{{ lookup('env', 'FILE_STORAGE_CLASS') | default('ocs-storagecluster-cephfs', true) }}"
+    install_ca_op: "{{ lookup('env', 'INSTALL_CA_OP') | default('False', true) | bool }}"
+    cpd_op_namespace: "{{ lookup('env', 'CPD_OP_NAMESPACE') | default('ibm-common-services', true) }}"
+
+  pre_tasks:
+# Check for required vars
+# -----------------------------------------------------------------------------
+    - name: Check for required environment variables
+      assert:
+        that:
+          - ca_namespace is defined and ca_namespace != ""
+          - cpd_namespace is defined and cpd_namespace != ""
+          - ocp_server is defined and ocp_server != ""
+          - ocp_token is defined and ocp_token != ""
+          - olm_utils_tty_off is defined and olm_utils_tty_off != ""
+        fail_msg: "One or more required variables are not defined"
+
+  tasks:
+# Login to the cluster for cpd-cli
+# -----------------------------------------------------------------------------
+    - name: Login to cpd cluster
+      shell: |
+        cpd-cli manage login-to-ocp --token={{ ocp_token }} --server={{ ocp_server }}
+      register: cpd_login_output
+      failed_when: cpd_login_output.rc > 1
+
+# Install CA Operator and instance if needed
+# -----------------------------------------------------------------------------
+    - name: Install CA Operator if needed
+      when: install_ca_op == true
+      shell: cpd-cli manage apply-olm --release={{ cpd_release }} --cpd_operator_ns={{ cpd_op_namespace }} --components=cognos_analytics
+      register: ca_op_output
+      failed_when: ca_op_output.rc > 1
+
+    - name: Create CA instance if new operator install
+      when: install_ca_op == true
+      shell: | 
+        cpd-cli manage apply-cr --components=cognos_analytics --release={{ cpd_release }} --cpd_instance_ns={{ cpd_namespace }} --block_storage_class={{ block_storage_class }} --file_storage_class={{ file_storage_class }} --license_acceptance=true
+      register: ca_inst_output
+      failed_when: ca_inst_output.rc > 1
+
+# Create the namespace to tether CA
+# -----------------------------------------------------------------------------
+    - name: Create CA Tethered Namespace
+      kubernetes.core.k8s:
+        name: "{{ ca_namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+
+# Tether the new namespace
+# -----------------------------------------------------------------------------
+    - name: Tether the new namespace
+      shell: |
+        cpd-cli manage setup-tethered-ns --cpd_instance_ns={{ cpd_namespace }} --tethered_instance_ns={{ ca_namespace }}
+      register: ca_ns_output
+      failed_when: ca_ns_output.rc > 1
+
+# Setup Role/RoleBinding/Network Policy
+# -----------------------------------------------------------------------------
+
+    - name: Setup Role
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('template', 'templates/ca_role.yml.j2') }}"
+
+    - name: Setup Role Binding
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('template', 'templates/ca_rolebind.yml.j2') }}"
+
+    - name: Setup Network Policy
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('template', 'templates/ca_networkpol.yml.j2') }}"

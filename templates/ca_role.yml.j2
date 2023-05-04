@@ -1,0 +1,21 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    icpdata_tether_resource: "true"
+  name: zen-cognos-analytics-role
+  namespace: "{{ ca_namespace }}"
+rules:
+  - verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+    apiGroups: 
+      - ca.cpd.ibm.com
+    resources:
+      - caservices
+      - caserviceinstances

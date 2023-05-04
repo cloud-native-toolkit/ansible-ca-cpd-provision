@@ -1,0 +1,65 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cognos-multi-port-ingress
+  namespace: "{{ ca_namespace }}"
+spec:
+  podSelector:
+    matchLabels:
+      release: cognos-analytics
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow requests from ibm-nginx pods in control plane namespace to ports 3010 and 9300
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: "{{ cpd_namespace }}"
+        podSelector:
+          matchLabels:
+            component: ibm-nginx
+      ports:
+        - port: 9300
+          protocol: TCP
+        - port: 3010
+          protocol: TCP
+    # Allow requests from Cognos sp in the control plane namespace to ports 3010 and 9300
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: "{{ cpd_namespace }}"
+        podSelector:
+          matchLabels:
+            component: ca-addon-sp
+      ports:
+        - port: 9300
+          protocol: TCP
+        - port: 3010
+          protocol: TCP      
+    # Allow requests from Cognos pods in same namespace on ports 9300, 3010, 5701 and 4300
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: "{{ ca_namespace }}"
+      ports:
+        - port: 9300
+          protocol: TCP
+        - port: 3010
+          protocol: TCP
+        - port: 5701
+          protocol: TCP
+        - port: 4300
+          protocol: TCP
+    # Allow from DNS
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kube-system
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: TCP
+        - port: 53
+          protocol: UDP

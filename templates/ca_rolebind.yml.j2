@@ -1,0 +1,18 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    icpdata_tether_resource: "true"
+  name: zen-cognos-analytics-rb
+  namespace: "{{ ca_namespace }}"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: zen-cognos-analytics-role
+subjects:
+  - kind: ServiceAccount
+    name: zen-editor-sa
+    namespace: "{{ cpd_namespace }}"
+  - kind: ServiceAccount
+    name: zen-admin-sa
+    namespace: "{{ cpd_namespace }}"
