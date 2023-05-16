@@ -25,7 +25,7 @@ To Run:
 
 `$ ansible-playbook tether_ca.yml`
 
-If you are installing for the first time you need to set `INSTALL_CA_OP="False"` otherwise leave it as the default.
+If you are installing for the first time you need to set `INSTALL_CA_OP="True"` otherwise leave it as the default.
 
 It will take about an hour to install for the first time, much less for subsequent installs of just tethering the namespace.
 
