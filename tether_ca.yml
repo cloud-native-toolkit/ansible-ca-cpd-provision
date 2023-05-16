@@ -8,7 +8,7 @@
 #
 # Define the following required environment variables:
 #  CA_NAMESPACE : namespace where to install the CA instance
-#  CPD_NAMESPACE: namespace of the CPD control plane install
+#  CPD_NNAMEAPCE: namespace of the CPD control plane install
 #  OCP_TOKEN: OCP login token
 #  OCP_SERVER: OCP server url
 #  OLM_UTILS_TTY_OFF: mandatory this is set to true
@@ -32,7 +32,13 @@
     block_storage_class: "{{ lookup('env', 'BLOCK_STORAGE_CLASS') | default('ocs-storagecluster-ceph-rbd', true) }}"
     file_storage_class: "{{ lookup('env', 'FILE_STORAGE_CLASS') | default('ocs-storagecluster-cephfs', true) }}"
     install_ca_op: "{{ lookup('env', 'INSTALL_CA_OP') | default('False', true) | bool }}"
+    provision_ca: "{{ lookup('env', 'PROVISION_CA') | default('False', true) | bool }}"
     cpd_op_namespace: "{{ lookup('env', 'CPD_OP_NAMESPACE') | default('ibm-common-services', true) }}"
+    ca_size: "{{ lookup('env', 'CA_SIZE') | default('small', true) }}"
+    db_connection: "{{ lookup('env', 'DB_CONNECTION') }}"
+    ca_version: "{{ lookup('env', 'CA_VERSION') | default('23.4.0', true) }}"
+    cpd_user: "{{ lookup('env', 'CPD_USER') }}"
+    cpd_pw: "{{ lookup('env', 'CPD_PW') }}"
 
   pre_tasks:
 # Check for required vars
@@ -45,6 +51,17 @@
           - ocp_server is defined and ocp_server != ""
           - ocp_token is defined and ocp_token != ""
           - olm_utils_tty_off is defined and olm_utils_tty_off != ""
+        fail_msg: "One or more required variables are not defined"
+
+# Check for required vars needed for provisioning CA instance if that is true
+# -----------------------------------------------------------------------------
+    - name: Check for required variables if provisioning CA instance
+      when: provision_ca == true    
+      assert:
+        that:
+          - db_connection is defined and db_connection != ""
+          - cpd_user is defined and cpd_user != ""
+          - cpd_pw is defined and cpd_pw != ""                
         fail_msg: "One or more required variables are not defined"
 
   tasks:
@@ -105,3 +122,12 @@
       kubernetes.core.k8s:
         state: present
         definition: "{{ lookup('template', 'templates/ca_networkpol.yml.j2') }}"
+
+# Call script to provision new CA instance
+# -----------------------------------------------------------------------------
+    - name: Provision the new CA instance
+      when: provision_ca == true
+      shell: |
+        {{ playbook_dir }}/provision.sh -n {{ cpd_namespace }} -N {{ cpd_op_namespace }} -t {{ ca_namespace }} -f {{ file_storage_class }} -b {{ block_storage_class }} -p {{ ca_size }} -V {{ ca_version }} -d {{ db_connection }} -X {{ cpd_user }} -Y {{ cpd_pw }}
+      register: ca_provision_output
+      failed_when: ca_provision_output.rc > 1
