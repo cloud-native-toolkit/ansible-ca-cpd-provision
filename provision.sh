@@ -386,6 +386,7 @@ if [[ ${remove_running_instance} == "true" ]]; then
       while [ ${currInstance} -lt ${total_count} ]; do
         instance_namespace=$(jq -r ".service_instances[${currInstance}].namespace" <<< ${get_status_response})
         if [ "${instance_namespace}" != "${tethered_namespace}"  ]; then
+            ((currInstance+=1))
             echo "Remove instance skipping namespace: ${instance_namespace}"
             continue
         fi
